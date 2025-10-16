@@ -11,12 +11,12 @@ import pandas as pd
 import llh2local as llh
 import local2llh as l2llh
 
-#### In this current version negative is towards the satellite ####
+#### In this current version posative is towards the satellite ####
 #### This follows GBIS conventions #####
 
 """
 Bayesian inference for pCDM source parameters using MCMC with spatially correlated noise.
-
+    
 Author: John Condon
 Date of edit: December 2024
 """
