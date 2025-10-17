@@ -250,6 +250,7 @@ def covairance_calculator(datapath, referencePoint):
     data_dict = data.item()
     print(data_dict.keys())
     u_los_obs = np.array(data_dict['Phase']).flatten()
+    u_los_obs = -u_los_obs*(0.0555/(4*np.pi))
     
     Lon = np.array(data_dict['Lon']).flatten()
     Lat = np.array(data_dict['Lat']).flatten()
@@ -302,7 +303,7 @@ def covairance_calculator(datapath, referencePoint):
     ax1.set_xlabel('X (m)')
     ax1.set_ylabel('Y (m)')
     ax1.set_title('Select polygon to mask data\nRight-click to reset')
-    plt.colorbar(scatter, ax=ax1, label='Phase')
+    plt.colorbar(scatter, ax=ax1, label='Displacement LOS (m) (positive towards satellite)')
 
     # Initialize polygon selector
     polygon_selector = PolygonSelector(ax1, onselect, useblit=True)
