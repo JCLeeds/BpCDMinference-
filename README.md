@@ -22,5 +22,5 @@ The maximum step size is there so that this adaptive step size does not blow up 
 <img width="2213" height="1359" alt="Figure_7" src="https://github.com/user-attachments/assets/1b0dedc1-0848-4154-87df-97a828d022cd" />
 <img width="1200" height="800" alt="Figure_5" src="https://github.com/user-attachments/assets/f6848020-2f6d-43a8-95df-f05de696949e" />
 <img width="2035" height="924" alt="Figure_6" src="https://github.com/user-attachments/assets/74230810-933d-4565-a2bd-1914ecd09152" />
-<img width="1476" height="593" alt="Screenshot from 2025-10-17 16-47-13" src="https://github.com/user-attachments/assets/773af76a-9e59-4801-9da5-b1f4c1b181c9" />
-<img width="1491" height="592" alt="Screenshot from 2025-10-17 16-48-21" src="https://github.com/user-attachments/assets/22a645dc-d876-4c40-8000-978c4782a309" />
+<img width="1488" height="595" alt="Screenshot from 2025-10-17 16-54-14" src="https://github.com/user-attachments/assets/1e67f54f-5c14-4815-b284-31ba7dd50a94" />
+<img width="1501" height="599" alt="Screenshot from 2025-10-17 16-54-45" src="https://github.com/user-attachments/assets/d4b0e164-669b-473c-b000-d9643b5f77d9" />
