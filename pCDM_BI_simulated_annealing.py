@@ -4,6 +4,7 @@ from scipy.stats import multivariate_normal
 from scipy.stats import norm
 from scipy.interpolate import griddata
 import pCDM_fast as pCDM_fast
+import okarda_F_andrew as okada_fast
 
 import matplotlib.pyplot as plt
 import os 
@@ -68,11 +69,11 @@ def simulated_annealing_optimization(u_los_obs, X_obs, Y_obs, incidence_angle, h
                 if not (lower <= params[key] <= upper):
                     return np.inf
                 
-            dvs = [params['DVx'], params['DVy'], params['DVz']]
-            signs = [np.sign(dv) for dv in dvs if dv != 0]
+            # dvs = [params['DVx'], params['DVy'], params['DVz']]
+            # signs = [np.sign(dv) for dv in dvs if dv != 0]
             
-            if len(set(signs)) > 1:
-                return np.inf
+            # if len(set(signs)) > 1:
+            #     return np.inf
                 
 
           
@@ -87,7 +88,7 @@ def simulated_annealing_optimization(u_los_obs, X_obs, Y_obs, incidence_angle, h
             Y_obs_arr = np.asarray(Y_obs, dtype=float)
             
 
-            if model_type == 'pCDM':
+            if model_type.lower() == 'pcdm':
                 ue, un, uv = pCDM_fast.pCDM(
                     X_obs_arr, Y_obs_arr, 
                     float(params['X0']), float(params['Y0']), float(params['depth']),
@@ -95,7 +96,7 @@ def simulated_annealing_optimization(u_los_obs, X_obs, Y_obs, incidence_angle, h
                     float(params['DVx']), float(params['DVy']), float(params['DVz']), 
                     0.25
                 )
-            elif model_type == 'McTigue':
+            elif model_type.lower() == 'mctigue':
                 # ue, un, uv = pCDM_fast.McTigue(
                 #     X_obs_arr, Y_obs_arr, 
                 #     float(params['X0']), float(params['Y0']), float(params['depth']),
@@ -104,7 +105,7 @@ def simulated_annealing_optimization(u_los_obs, X_obs, Y_obs, incidence_angle, h
                 #     0.25
                 # )
                 pass
-            elif model_type == 'Mogi':
+            elif model_type.lower() == 'mogi':
                 # ue, un, uv = pCDM_fast.Mogi(
                 #     X_obs_arr, Y_obs_arr, 
                 #     float(params['X0']), float(params['Y0']), float(params['depth']),
@@ -112,7 +113,7 @@ def simulated_annealing_optimization(u_los_obs, X_obs, Y_obs, incidence_angle, h
                 #     0.25
                 # )
                 pass
-            elif model_type == 'Yang':
+            elif model_type.lower() == 'yang':
                 # ue, un, uv = pCDM_fast.Yang(
                 #     X_obs_arr, Y_obs_arr, 
                 #     float(params['X0']), float(params['Y0']), float(params['depth']),
@@ -121,16 +122,18 @@ def simulated_annealing_optimization(u_los_obs, X_obs, Y_obs, incidence_angle, h
                 #     0.25
                 # )
                 pass
-            elif model_type == 'Okada':
-                # ue, un, uv = pCDM_fast.Okada(
-                #     X_obs_arr, Y_obs_arr, 
-                #     float(params['X0']), float(params['Y0']), float(params['depth']),
-                #     float(params['length']), float(params['width']),
-                #     float(params['strike']), float(params['dip']),
-                #     float(params['rake']),
-                #     float(params['slip']),
-                #     0.25
-                # )
+            elif model_type.lower() == 'okada':
+                
+                ue, un, uv = okada_fast.disloc3d3(
+                    X_obs_arr, Y_obs_arr, 
+                    float(params['X0']), float(params['Y0']), float(params['depth']),
+                    float(params['length']), float(params['width']),
+                    float(params['strike']), float(params['dip']),
+                    float(params['rake']),
+                    float(params['slip']),
+                    float(params['opening']),
+                    0.25
+                )
                 pass
             
             # Ensure outputs are arrays

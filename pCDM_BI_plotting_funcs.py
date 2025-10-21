@@ -4,6 +4,7 @@ from scipy.stats import multivariate_normal
 from scipy.stats import norm
 from scipy.interpolate import griddata
 import pCDM_fast as pCDM_fast
+import okarda_F_andrew as okada_fast
 
 import matplotlib.pyplot as plt
 import os 
@@ -167,12 +168,12 @@ def plot_inference_results(samples, log_likelihood_trace, rms_evolution, burn_in
     
     # Plot parameter traces and histograms
     # Define parameters based on model type
-    if model_type == 'pCDM':
+    if model_type.lower() == 'pcdm':
         all_params = ['X0', 'Y0', 'depth', 'DVx', 'DVy', 'DVz', 'omegaX', 'omegaY', 'omegaZ']
-    elif model_type == 'mogi':
+    elif model_type.lower() == 'mogi':
         all_params = ['X0', 'Y0', 'depth', 'dV']
-    elif model_type == 'okada':
-        all_params = ['X0', 'Y0', 'depth', 'length', 'width', 'strike', 'dip', 'rake', 'slip']
+    elif model_type.lower() == 'okada':
+        all_params = ['X0', 'Y0', 'depth', 'length', 'width', 'strike', 'dip', 'rake', 'slip','opening']
     else:
         # Fallback: use all available parameters from samples
         all_params = list(samples.keys())
@@ -220,7 +221,7 @@ def plot_inference_results(samples, log_likelihood_trace, rms_evolution, burn_in
     # Plot other diagnostics if observation data is provided
     if all(x is not None for x in [u_los_obs, X_obs, Y_obs, incidence_angle, heading]):
         plot_model_comparison(samples, u_los_obs, X_obs, Y_obs, 
-                             incidence_angle, heading, log_likelihood_trace, burn_in, figure_folder=figure_folder)
+                             incidence_angle, heading, log_likelihood_trace, burn_in, figure_folder=figure_folder,model_type=model_type)
         plot_rms_evolution(rms_evolution, figure_folder=figure_folder,model_type=model_type)
         plot_parameter_convergence(samples, burn_in, figure_folder=figure_folder,model_type=model_type)
     
@@ -282,12 +283,12 @@ def plot_parameter_convergence(samples, burn_in=2000, figure_folder=None, model_
     """
 
     # Define parameters based on model type
-    if model_type == 'pCDM':
+    if model_type.lower() == 'pcdm':
         all_params = ['X0', 'Y0', 'depth', 'DVx', 'DVy', 'DVz', 'omegaX', 'omegaY', 'omegaZ']
-    elif model_type == 'mogi':
+    elif model_type.lower() == 'mogi':
         all_params = ['X0', 'Y0', 'depth', 'dV']
-    elif model_type == 'okada':
-        all_params = ['X0', 'Y0', 'depth', 'length', 'width', 'strike', 'dip', 'rake', 'slip']
+    elif model_type.lower() == 'okada':
+        all_params = ['X0', 'Y0', 'depth', 'length', 'width', 'strike', 'dip', 'rake', 'slip','opening']
     else:
         # Fallback: use all available parameters from samples
         all_params = list(samples.keys())
@@ -398,43 +399,50 @@ def plot_model_comparison(samples, u_los_obs, X_obs, Y_obs,
     los_u = -np.cos(inc_rad)
     
     # Calculate initial model based on model_type
-    if model_type == 'pCDM':
+    if model_type.lower() == 'pcdm':
         ue_init, un_init, uv_init = pCDM_fast.pCDM(X_obs, Y_obs, initial_params['X0'], initial_params['Y0'], 
                                          initial_params['depth'], initial_params['omegaX'], 
                                          initial_params['omegaY'], initial_params['omegaZ'],
                                          initial_params['DVx'], initial_params['DVy'], 
                                          initial_params['DVz'], 0.25)
-    elif model_type == 'mogi':
+    elif model_type.lower() == 'mogi':
         # # Example for Mogi model - adjust parameters as needed
         # ue_init, un_init, uv_init = calculate_mogi_displacement(X_obs, Y_obs, 
         #                                                       initial_params['X0'], initial_params['Y0'], 
         #                                                       initial_params['depth'], initial_params['dV'])
         pass
 
-    elif model_type == 'okada':
+    elif model_type.lower() == 'okada':
         # Example for Okada model - adjust parameters as needed
-        # ue_init, un_init, uv_init = calculate_okada_displacement(X_obs, Y_obs, initial_params)
-        pass
+        ue_init, un_init, uv_init = okada_fast.disloc3d3(X_obs, Y_obs, initial_params['X0'], initial_params['Y0'], 
+                                         initial_params['depth'], initial_params['length'], 
+                                         initial_params['width'], initial_params['strike'], 
+                                         initial_params['dip'], initial_params['rake'], 
+                                         initial_params['slip'], initial_params['opening'], 0.25)
+     
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
     
     u_los_init = -(ue_init * los_e + un_init * los_n + uv_init * los_u)
     
     # Calculate optimal model based on model_type
-    if model_type == 'pCDM':
+    if model_type.lower() == 'pcdm':
         ue_opt, un_opt, uv_opt = pCDM_fast.pCDM(X_obs, Y_obs, optimal_params['X0'], optimal_params['Y0'], 
                                       optimal_params['depth'], optimal_params['omegaX'], 
                                       optimal_params['omegaY'], optimal_params['omegaZ'],
                                       optimal_params['DVx'], optimal_params['DVy'], 
                                       optimal_params['DVz'], 0.25)
-    elif model_type == 'mogi':
+    elif model_type.lower() == 'mogi':
         # ue_opt, un_opt, uv_opt = calculate_mogi_displacement(X_obs, Y_obs, 
         #                                                    optimal_params['X0'], optimal_params['Y0'], 
         #                                                    optimal_params['depth'], optimal_params['dV'])
         pass
-    elif model_type == 'okada':
-        # ue_opt, un_opt, uv_opt = calculate_okada_displacement(X_obs, Y_obs, optimal_params)
-        pass
+    elif model_type.lower() == 'okada':
+        ue_opt, un_opt, uv_opt = okada_fast.disloc3d3(X_obs, Y_obs, optimal_params['X0'], optimal_params['Y0'], 
+                                      optimal_params['depth'], optimal_params['length'], 
+                                      optimal_params['width'], optimal_params['strike'], 
+                                      optimal_params['dip'], optimal_params['rake'], 
+                                      optimal_params['slip'], optimal_params['opening'], 0.25)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
     u_los_opt = -(ue_opt * los_e + un_opt * los_n + uv_opt * los_u)
@@ -494,6 +502,10 @@ def plot_model_comparison(samples, u_los_obs, X_obs, Y_obs,
     # Determine common color scale for observed and optimal
     vmin = np.nanmin([u_obs_plot, u_opt_plot])
     vmax = np.nanmax([u_obs_plot, u_opt_plot])
+    # Center color scale on zero
+    vmax_abs = max(abs(vmin), abs(vmax))
+    vmin = -vmax_abs
+    vmax = vmax_abs
     
     # Residual color scale
     res_vmax = np.nanmax(np.abs(res_opt_plot))

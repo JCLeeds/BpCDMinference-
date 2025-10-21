@@ -12,8 +12,10 @@ import llh2local as llh
 import local2llh as l2llh
 import pCDM_BI_plotting_funcs as pCDM_BI_plotting_funcs
 import pCDM_BI_simulated_annealing as pCDM_BI_simulated_annealing
+import okarda_F_andrew as okada
 import pickle
 from datetime import datetime
+import gc
 
 #### In this current version posative is towards the satellite ####
 #### This follows GBIS conventions #####
@@ -170,26 +172,26 @@ def bayesian_inference_pCDM_with_noise(u_los_obs, X_obs, Y_obs, incidence_angle,
             """
             Generic forward model dispatcher
             """
-            if model_type == 'pCDM':
+            if model_type.lower() == 'pcdm':
                 ue, un, uv = pCDM_fast.pCDM(X_obs, Y_obs, params['X0'], params['Y0'], params['depth'],
                                     params['omegaX'], params['omegaY'], params['omegaZ'],
                                     params['DVx'], params['DVy'], params['DVz'], 0.25)
-            
-            elif model_type == 'Mogi':
+
+            elif model_type.lower() == 'mogi':
                 # Mogi point source model
                 # Expected parameters: X0, Y0, depth, DV
                 # ue, un, uv = mogi_model(X_obs, Y_obs, params['X0'], params['Y0'], 
                 #                        params['depth'], params['DV'])
                 pass # Placeholder to avoid error
-            
-            elif model_type == 'Yang':
+
+            elif model_type.lower() == 'yang':
                 # Yang finite spherical source model
                 # Expected parameters: X0, Y0, depth, DV, radius
                 # ue, un, uv = yang_model(X_obs, Y_obs, params['X0'], params['Y0'], 
                 #                        params['depth'], params['DV'], params['radius'])
                 pass  # Placeholder to avoid error
-            
-            elif model_type == 'McTigue':
+
+            elif model_type.lower() == 'mctigue':
                 # McTigue prolate spheroid model
                 # Expected parameters: X0, Y0, depth, DV, a, c, strike, dip, plunge
                 # ue, un, uv = mctigue_model(X_obs, Y_obs, params['X0'], params['Y0'], 
@@ -197,15 +199,19 @@ def bayesian_inference_pCDM_with_noise(u_los_obs, X_obs, Y_obs, incidence_angle,
                 #                           params['c'], params['strike'], params['dip'], 
                 #                           params['plunge'])
                 pass  # Placeholder to avoid error
-            
-            elif model_type == 'Okada':
+
+            elif model_type.lower() == 'okada':
+                # okada.clear_numba_cache()
                 # Okada rectangular dislocation model
-                # Expected parameters: X0, Y0, depth, length, width, strike, dip, rake, slip
-                # ue, un, uv = okada_model(X_obs, Y_obs, params['X0'], params['Y0'], 
-                #                         params['depth'], params['length'], params['width'],
-                #                         params['strike'], params['dip'], params['rake'], 
-                #                         params['slip'])
-                pass  # Placeholder to avoid error
+                # Expected parameters: X0, Y0, depth, length, width, strike, dip, rake, slip, opening
+                ue, un, uv = okada.disloc3d3(X_obs, Y_obs, params['X0'], params['Y0'],
+                                                     params['depth'], params['length'], params['width'], params['slip'], params['opening'],
+                                                     params['strike'], params['dip'], params['rake'], 0.25
+                                                      )
+                
+          
+
+               
             
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
@@ -220,7 +226,7 @@ def bayesian_inference_pCDM_with_noise(u_los_obs, X_obs, Y_obs, incidence_angle,
         acceptance_counts = {param: 0 for param in param_names}
         proposal_counts = {param: 0 for param in param_names}
 
-        # If using simulated annealing for initialization only works for pCDM needs changing 
+        # If using simulated annealing for initialization
         if use_sa_init:
             print(f"\nUsing simulated annealing for initial {model_type} parameter estimation...")
             sa_step_sizes = {key: val * 2.0 for key, val in proposal_std.items()}
@@ -242,42 +248,51 @@ def bayesian_inference_pCDM_with_noise(u_los_obs, X_obs, Y_obs, incidence_angle,
                 if not (lower <= params[key] <= upper):
                     return -np.inf
             
-            # Model-specific constraints
-            if model_type == 'pCDM':
+            ########################### Model-specific constraints ############################
+            if model_type.lower() == 'pcdm':
                 # Additional constraint: all DV values must have same sign (if desired) not needed as caught by the model itself 
                 # dvs = [params['DVx'], params['DVy'], params['DVz']]
                 # signs = [np.sign(dv) for dv in dvs if dv != 0]
                 # if len(set(signs)) > 1:
                 #     return -np.inf
                 pass
-            
-            elif model_type in ['Mogi', 'Yang']: # examples area for contraits 
+
+            elif model_type.lower() in ['mogi', 'yang']: # examples area for contraits
                 # Volume change should be reasonable
                 if 'DV' in params and abs(params['DV']) > 1e10:
                     return -np.inf
-            
-            elif model_type == 'McTigue': # examples area for contraits 
+
+            elif model_type.lower() == 'mctigue': # examples area for contraits
                 # Semi-axes should be positive and reasonable
                 if 'a' in params and 'c' in params:
                     if params['a'] <= 0 or params['c'] <= 0:
                         return -np.inf
                     if params['a'] > 10000 or params['c'] > 10000:  # reasonable bounds
                         return -np.inf
-            
-            elif model_type == 'Okada': # examples area for contraits 
+
+            elif model_type.lower() == 'okada': # examples area for contraits
                 # Fault dimensions should be positive
                 if 'length' in params and 'width' in params:
                     if params['length'] <= 0 or params['width'] <= 0:
                         return -np.inf
-            
+                    # # # Length should be at least 1.5 times the width
+                    # if 'length' in params and 'width' in params:
+                    #     if params['length'] < 1.5 * params['width']:
+                    #         return -np.inf
+
+                if 'depth' in params:
+                    if params['depth'] <= 0:
+                        return -np.inf
+            ##################################################################################
             return 0.0
         
         def log_likelihood(params):
             """Calculate log likelihood with correlated noise"""
             try:
-                # Forward model
+                    # Forward model
                 ue, un, uv = forward_model(params, model_type)
-                
+                # print(  f"Forward model computed for parameters: {params}")
+                # print(  f"Predicted displacements (first 5): ue={ue[:5]}, un={un[:5]}, uv={uv[:5]}")
                 # Convert to line-of-sight
                 u_los_pred = -(ue * los_e + un * los_n + uv * los_u)
                 
@@ -552,29 +567,74 @@ def bayesian_inference_pCDM_with_noise(u_los_obs, X_obs, Y_obs, incidence_angle,
         return (samples, log_likelihood_trace, residuals_evolution, 
                 proposal_std_evolution, acceptance_rate_evolution)
 
-def genereate_synthetic_data(true_params, grid_size=100, noise_level=0.05):
+def gen_synthetic_data(true_params, grid_size=100, noise_level=0.05, model_type='pcdm'):
+    """
+    Generate synthetic data for testing various deformation models.
+        
+    Parameters:
+    -----------
+    true_params : dict
+        True parameter values for the model. If None, uses default values based on model_type.
+    grid_size : int
+        Size of the observation grid (grid_size x grid_size points)
+    noise_level : float
+        Noise level as fraction of signal standard deviation
+    model_type : str
+        Type of forward model ('pCDM', 'okada', 'mogi', etc.)
+        
+    Returns:
+    --------
+    u_los_obs : ndarray
+        Observed line-of-sight displacements with noise
+    X_flat, Y_flat : ndarray
+        Flattened observation coordinates
+    incidence_angle : float
+        Satellite incidence angle
+    heading : float
+        Satellite heading
+    noise_sill, noise_nugget, noise_range : float
+        Noise model parameters
+    """
     # Create grid based on grid_size parameter
-    x_range = np.linspace(-5, 5, grid_size)
-    y_range = np.linspace(-5, 5, grid_size)
+    x_range = np.linspace(-10000, 10000, grid_size)
+    y_range = np.linspace(-10000, 10000, grid_size)
     X, Y = np.meshgrid(x_range, y_range)
     X_flat = X.flatten()
     Y_flat = Y.flatten()
     print(f"Generated grid with {grid_size}x{grid_size} points.")
-    
-    # True parameters
-    true_params = {
-        'X0': 0.5, 'Y0': -0.3, 'depth': 1.2,
-        'DVx': -0.002, 'DVy': -0.0018, 'DVz': -0.0015,
+    print(f"model_type: {model_type}")
+
+    if true_params is None:
+        print(true_params)
+        
+        if model_type.lower() == 'pcdm':
+            # True parameters
+            true_params = {
+                'X0': 0.5, 'Y0': -0.3, 'depth': 12000,
+        'DVx': 5e7, 'DVy': 5e7, 'DVz': 5e7,
         'omegaX': 10.0, 'omegaY': -30.0, 'omegaZ': -10.0
-    }
-    
-    # Generate true displacements
-    ue_true, un_true, uv_true = pCDM_fast.pCDM(X_flat, Y_flat, true_params['X0'], true_params['Y0'], 
-                                        true_params['depth'], true_params['omegaX'], 
-                                        true_params['omegaY'], true_params['omegaZ'],
-                                        true_params['DVx'], true_params['DVy'], 
-                                        true_params['DVz'], 0.25)
-    
+        }
+            # Generate true displacements
+            ue_true, un_true, uv_true = pCDM_fast.pCDM(X_flat, Y_flat, true_params['X0'], true_params['Y0'], 
+                                                true_params['depth'], true_params['omegaX'], 
+                                                true_params['omegaY'], true_params['omegaZ'],
+                                                true_params['DVx'], true_params['DVy'], 
+                                                true_params['DVz'], 0.25)
+        elif model_type.lower() == 'okada':
+            # True parameters for Okada model
+            true_params = {
+                'X0': 2000.0, 'Y0': 0.0, 'depth': 1.0e3,
+                'length': 5e3, 'width': 1e3,
+                'strike': 120, 'dip': 45, 'rake': 180,
+                'slip': 2, 'opening': 0.0
+            }
+            print(true_params)
+            ue_true, un_true, uv_true = okada.disloc3d3(X_flat, Y_flat, true_params['X0'], true_params['Y0'], 
+                                                true_params['depth'], true_params['length'], 
+                                                true_params['width'], true_params['strike'], 
+                                                true_params['dip'], true_params['rake'], 
+                                                true_params['slip'], true_params['opening'],0.25)
+
     # Convert to LOS
     incidence_angle = 39.4
     heading = -169.9
@@ -619,11 +679,115 @@ def genereate_synthetic_data(true_params, grid_size=100, noise_level=0.05):
     # Add spatially correlated noise instead of independent noise
     u_los_obs = u_los_true + spatially_correlated_noise
 
+    # Plot the synthetic data for visualization
+    if model_type.lower() == 'pcdm':
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Plot true LOS displacement
+        sc1 = axes[0,0].tricontourf(X_flat, Y_flat, u_los_true, levels=50, cmap='RdBu_r')
+        axes[0,0].set_title('True LOS Displacement (mm)')
+        axes[0,0].set_xlabel('X (km)')
+        axes[0,0].set_ylabel('Y (km)')
+        axes[0,0].set_aspect('equal')
+        plt.colorbar(sc1, ax=axes[0,0])
+        
+        # Plot observed LOS displacement (with noise)
+        sc2 = axes[0,1].tricontourf(X_flat, Y_flat, u_los_obs, levels=50, cmap='RdBu_r')
+        axes[0,1].set_title('Observed LOS Displacement (mm)')
+        axes[0,1].set_xlabel('X (km)')
+        axes[0,1].set_ylabel('Y (km)')
+        axes[0,1].set_aspect('equal')
+        plt.colorbar(sc2, ax=axes[0,1])
+        
+        # Plot noise
+        sc3 = axes[1,0].tricontourf(X_flat, Y_flat, spatially_correlated_noise, levels=50, cmap='viridis')
+        axes[1,0].set_title('Spatially Correlated Noise (mm)')
+        axes[1,0].set_xlabel('X (km)')
+        axes[1,0].set_ylabel('Y (km)')
+        axes[1,0].set_aspect('equal')
+        plt.colorbar(sc3, ax=axes[1,0])
+        
+        # Plot difference (should be just the noise)
+        difference = u_los_obs - u_los_true
+        sc4 = axes[1,1].tricontourf(X_flat, Y_flat, difference, levels=50, cmap='viridis')
+        axes[1,1].set_title('Difference (Obs - True) (mm)')
+        axes[1,1].set_xlabel('X (km)')
+        axes[1,1].set_ylabel('Y (km)')
+        axes[1,1].set_aspect('equal')
+        plt.colorbar(sc4, ax=axes[1,1])
+        
+        plt.tight_layout()
+        plt.savefig(f'synthetic_data_{model_type}.png', dpi=300, bbox_inches='tight')
+        plt.show()
+
+    elif model_type.lower() == 'okada':
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Plot true LOS displacement
+        sc1 = axes[0,0].tricontourf(X_flat/1000, Y_flat/1000, u_los_true, levels=50, cmap='RdBu_r')
+        axes[0,0].set_title('True LOS Displacement (m)')
+        axes[0,0].set_xlabel('X (km)')
+        axes[0,0].set_ylabel('Y (km)')
+        axes[0,0].set_aspect('equal')
+        plt.colorbar(sc1, ax=axes[0,0])
+        
+        # Plot observed LOS displacement (with noise)
+        sc2 = axes[0,1].tricontourf(X_flat/1000, Y_flat/1000, u_los_obs, levels=50, cmap='RdBu_r')
+        axes[0,1].set_title('Observed LOS Displacement (m)')
+        axes[0,1].set_xlabel('X (km)')
+        axes[0,1].set_ylabel('Y (km)')
+        axes[0,1].set_aspect('equal')
+        plt.colorbar(sc2, ax=axes[0,1])
+        
+        # Plot noise
+        sc3 = axes[1,0].tricontourf(X_flat/1000, Y_flat/1000, spatially_correlated_noise, levels=50, cmap='viridis')
+        axes[1,0].set_title('Spatially Correlated Noise (m)')
+        axes[1,0].set_xlabel('X (km)')
+        axes[1,0].set_ylabel('Y (km)')
+        axes[1,0].set_aspect('equal')
+        plt.colorbar(sc3, ax=axes[1,0])
+        
+        # Plot difference (should be just the noise)
+        difference = u_los_obs - u_los_true
+        sc4 = axes[1,1].tricontourf(X_flat/1000, Y_flat/1000, difference, levels=50, cmap='viridis')
+        axes[1,1].set_title('Difference (Obs - True) (m)')
+        axes[1,1].set_xlabel('X (km)')
+        axes[1,1].set_ylabel('Y (km)')
+        axes[1,1].set_aspect('equal')
+        # Prepare model geometry for plotting
+        xcent = float(true_params['X0'])
+        ycent = float(true_params['Y0'])
+        strike = float(true_params['strike'])
+        dip = float(true_params['dip'])
+        rake = float(true_params['rake'])
+        slip = float(true_params['slip'])
+        length = float(true_params['length'])
+        centroid_depth = float(true_params['depth'])
+        width = float(true_params['width'])
+        model = [xcent, ycent, strike, dip, rake, slip, length, centroid_depth, width]
+        # end1x, end2x, end1y, end2y, c1x, c2x, c3x, c4x, c1y, c2y, c3y, c4y = okada.fault_for_plotting(model)
+        # plt.plot(np.array([end1x, end2x])/1000, np.array([end1y, end2y])/1000, color='White',figure=fig)
+        # plt.scatter(end1x/1000, end1y/1000, color='white',figure=fig)
+        # plt.plot(np.array([c1x, c2x, c3x, c4x, c1x])/1000, np.array([c1y, c2y, c3y, c4y, c1y])/1000, color='White',figure=fig)
+     
+        plt.colorbar(sc4, ax=axes[1,1])
+        
+        plt.tight_layout()
+        plt.savefig(f'synthetic_data_{model_type}.png', dpi=300, bbox_inches='tight')
+        plt.show()
+
+    print(f"True parameters used for {model_type} model:")
+    for key, value in true_params.items():
+        print(f"  {key}: {value}")
+    print(f"Noise level: {noise_level*100:.1f}%")
+    print(f"RMS of true signal: {np.std(u_los_true)*1000:.3f} mm")
+    print(f"RMS of noise: {np.std(spatially_correlated_noise)*1000:.3f} mm")
+
     return u_los_obs, X_flat, Y_flat, incidence_angle, heading, noise_sill, noise_nugget, noise_range
 
 def save_inference_state(samples, log_lik_trace, rms_evolution, proposal_std_evolution, 
                         acceptance_rate_evolution, X_obs, Y_obs, u_los_obs, 
-                        incidence_angle, heading, inference_params, figure_folder=None):
+                        incidence_angle, heading, inference_params, figure_folder=None,model_type='pCDM'):
     """
     Save complete inference state to pickle file for later regeneration.
     
@@ -681,7 +845,7 @@ def save_inference_state(samples, log_lik_trace, rms_evolution, proposal_std_evo
     # Generate filename
     n_iterations = len(log_lik_trace)
     target_acceptance = inference_params.get('target_acceptance', 0.23)
-    pickle_filename = f"bayesian_inference_state_n{n_iterations}_accept{target_acceptance}.pkl"
+    pickle_filename = f"bayesian_inference_state_n{n_iterations}_accept{target_acceptance}_{model_type}.pkl"
     
     if figure_folder is not None:
         if not os.path.exists(figure_folder):
@@ -774,7 +938,8 @@ def regenerate_plots_from_state(pickle_filename, new_figure_folder=None):
         proposal_std_evolution=proposal_std_evolution,
         acceptance_rate_evolution=acceptance_rate_evolution,
         adaptive_interval=inference_params.get('adaptive_interval', 1000),
-        target_acceptance=inference_params.get('target_acceptance', 0.23)
+        target_acceptance=inference_params.get('target_acceptance', 0.23),
+        model_type=inference_params.get('model_type', 'pCDM')
     )
 
    
@@ -784,7 +949,7 @@ def run_baysian_inference(u_los_obs, X_obs, Y_obs, incidence_angle, heading,
                          n_iterations=10000, sill=None, nugget=None, range_param=None,
                          initial_params=None, priors=None, proposal_std=None, 
                          max_step_sizes=None, adaptive_interval=1000, 
-                         target_acceptance=0.23, figure_folder=None,use_sa_init=False):
+                         target_acceptance=0.23, figure_folder=None,use_sa_init=False,model_type='pCDM',u_los_obs_already_los_in_m=None):
     """
     Run Bayesian inference and plot results.
     
@@ -828,7 +993,12 @@ def run_baysian_inference(u_los_obs, X_obs, Y_obs, incidence_angle, heading,
  
     
     # convert from Phase to Displacement (m)
-    u_los_obs = -u_los_obs*(0.0555/(4*np.pi))
+   
+
+    if u_los_obs_already_los_in_m is not None:
+        u_los_obs = u_los_obs
+    else:
+        u_los_obs = -u_los_obs*(0.0555/(4*np.pi))
     
    
     # Estimate noise parameters if not provided
@@ -908,7 +1078,7 @@ def run_baysian_inference(u_los_obs, X_obs, Y_obs, incidence_angle, heading,
         adaptive_interval=adaptive_interval,
         target_acceptance=target_acceptance,
         use_sa_init=use_sa_init,
-        figure_folder=figure_folder)
+        figure_folder=figure_folder,model_type=model_type)
     
     # Save complete inference state to pickle
     pickle_filename = save_inference_state(
@@ -923,7 +1093,8 @@ def run_baysian_inference(u_los_obs, X_obs, Y_obs, incidence_angle, heading,
         incidence_angle=incidence_angle,
         heading=heading,
         inference_params=inference_params,
-        figure_folder=figure_folder
+        figure_folder=figure_folder,
+        model_type=model_type
     )
     
     # Plot results
@@ -932,12 +1103,98 @@ def run_baysian_inference(u_los_obs, X_obs, Y_obs, incidence_angle, heading,
                           incidence_angle=incidence_angle, heading=heading, figure_folder=figure_folder,
                           proposal_std_evolution=proposal_std_evolution, 
                           acceptance_rate_evolution=acceptance_rate_evolution,
-                          adaptive_interval=adaptive_interval, target_acceptance=target_acceptance)
+                          adaptive_interval=adaptive_interval, target_acceptance=target_acceptance, model_type=model_type)
     
     return samples, log_lik_trace, rms_evolution, pickle_filename
 
+def synthetic_test_okada():
+    # Default parameters
+    # gc.collect()
+    default_initial = {
+        'X0': 0,
+        'Y0': 0,
+        'depth': 5000,
+        'length': 10000,
+        'width': 8000,
+        'strike': 100,
+        'dip': 30,
+        'rake': 90,
+        'slip': 1,
+        'opening': 0
+    }
+    
+    default_priors = {
+        'X0': (-15000,15000),
+        'Y0': (-15000, 15000),
+        'depth': (100, 35000),
+        'length': (1000, 20000),
+        'width': (1000, 20000),
+        'strike': (0, 360),
+        'dip': (0, 90),
+        'rake': (-180, 180),
+        'slip': (-10, 10),
+        'opening': (0, 0)
+    }
+    
+    default_learning_rates = {
+        'X0': 10000,
+        'Y0': 10000,
+        'depth': 1000,
+        'length': 1000,
+        'width': 1000,
+        'strike': 10,
+        'dip': 10,
+        'rake': 10,
+        'slip': 0.3,
+        'opening': 0.0
+    }
 
-def sythetic_test():
+    max_step_sizes = {
+            'X0': 100000.0,
+            'Y0': 100000.0,
+            'depth': 10000.0,
+            'length': 5000.0,
+            'width': 5000.0,
+            'strike': 20,
+            'dip': 20,
+            'rake': 20,
+            'slip': 2,
+            'opening': 0
+        }
+    
+    # Generate synthetic data
+    u_los_obs, X_obs, Y_obs, incidence_angle, heading, noise_sill, noise_nugget, noise_range = gen_synthetic_data(
+        None, grid_size=50, noise_level=0.5, model_type='okada')
+    
+    print(f"Generated synthetic data shapes:")
+    print(f"  u_los_obs: {u_los_obs.shape}")
+    print(f"  X_obs: {X_obs.shape}")
+    print(f"  Y_obs: {Y_obs.shape}")
+    print(f"  incidence_angle: {incidence_angle}")
+    print(f"  heading: {heading}")
+    print(f"  noise parameters: sill={noise_sill:.6f}, nugget={noise_nugget:.6f}, range={noise_range:.3f}")
+    okada.clear_numba_cache()
+    # Run Bayesian inference with synthetic data and default settings
+    samples, log_lik_trace, rms_evolution, pickle_filename = run_baysian_inference(
+        u_los_obs=u_los_obs,
+        X_obs=X_obs,
+        Y_obs=Y_obs,
+        incidence_angle=incidence_angle,
+        heading=heading,
+        n_iterations=int(1e6),
+        sill=noise_sill,
+        nugget=noise_nugget,
+        range_param=noise_range,
+        initial_params=default_initial,
+        priors=default_priors,
+        proposal_std=default_learning_rates,
+        max_step_sizes=max_step_sizes,
+        adaptive_interval=1000,
+        target_acceptance=0.23,
+        figure_folder="figure_test_synth_okada",
+        use_sa_init=True, model_type='okada',u_los_obs_already_los_in_m=True)
+
+def synthetic_test_pcdm():
     # Default parameters
     default_initial = {
         'X0': 0,
@@ -957,7 +1214,7 @@ def sythetic_test():
         'depth': (100, 35000),
         'DVx': (1e2, 1e9),
         'DVy': (1e2, 1e9),
-        'DVz': (-1e9, 1e9),
+        'DVz': (1e2, 1e9),
         'omegaX': (-45, 45),
         'omegaY': (-45, 45),
         'omegaZ': (-45, 45)
@@ -988,8 +1245,8 @@ def sythetic_test():
         }
     
     # Generate synthetic data
-    u_los_obs, X_obs, Y_obs, incidence_angle, heading, noise_sill, noise_nugget, noise_range = genereate_synthetic_data(
-        true_params=None, grid_size=50, noise_level=0.05)
+    u_los_obs, X_obs, Y_obs, incidence_angle, heading, noise_sill, noise_nugget, noise_range = gen_synthetic_data(
+        true_params=None, grid_size=50, noise_level=0.05,)
     
     print(f"Generated synthetic data shapes:")
     print(f"  u_los_obs: {u_los_obs.shape}")
@@ -1000,7 +1257,7 @@ def sythetic_test():
     print(f"  noise parameters: sill={noise_sill:.6f}, nugget={noise_nugget:.6f}, range={noise_range:.3f}")
 
     # Run Bayesian inference with synthetic data and default settings
-    samples, log_lik_trace, rms_evolution = run_baysian_inference(
+    samples, log_lik_trace, rms_evolution,pickle_filename = run_baysian_inference(
         u_los_obs=u_los_obs,
         X_obs=X_obs,
         Y_obs=Y_obs,
@@ -1017,116 +1274,182 @@ def sythetic_test():
         adaptive_interval=1000,
         target_acceptance=0.23,
         figure_folder="figure_test_synth",
-        use_sa_init=True)
+        use_sa_init=True, model_type='pCDM',u_los_obs_already_los_in_m=True)
     
 
 if __name__ == "__main__":
+    # synthetic_test_okada()
+    synthetic_test_pcdm()
 
-##### Values to Edit #########
+##### Values to Edit for pCDM #########
     # Example with custom parameters
-    custom_initial = {
-        'X0': 0,
-        'Y0': 0,
-        'depth': 5000,
-        'DVx': 7e7,
-        'DVy': 7e7,
-        'DVz': 7e7,
-        'omegaX': 0,
-        'omegaY': 0,
-        'omegaZ': 0
-    }
-    #Input Priors here
-    custom_priors = {
-        'X0': (-15000,15000),
-        'Y0': (-15000, 15000),
-        'depth': (100, 35000),
-        'DVx': (1e2, 1e9),
-        'DVy': (1e2, 1e9),
-        'DVz': (-1e9, 1e9),
-        'omegaX': (-45, 45),
-        'omegaY': (-45, 45),
-        'omegaZ': (-45, 45)
-    }
-    # Intial Learning Rates Here
-    custom_learning_rates = {
-        'X0': 100,
-        'Y0': 100,
-        'depth': 100,
-        'DVx': 1e4,
-        'DVy': 1e4,
-        'DVz': 1e4,
-        'omegaX': 1,
-        'omegaY': 1,
-        'omegaZ': 1
-    }
-    # Max Step Sizes Here
-    max_step_sizes = {
-            'X0': 100000.0,
-            'Y0': 100000.0,
-            'depth': 10000.0,
-            'DVx': 1e7,
-            'DVy': 1e7,
-            'DVz': 1e7,
-            'omegaX': 20,
-            'omegaY': 20,
-            'omegaZ': 20
-        }
-       
-    # # Load data from .npy file
-    data = np.load('benji_test.npy', allow_pickle=True)
-
-
-    sill = 6.1951e-05
-    range_param = 15737.072
-    nugget = 3.311e-06
-    referencePoint = [-67.83951712, -21.77505660]
+    # custom_initial = {
+    #     'X0': 0,
+    #     'Y0': 0,
+    #     'depth': 5000,
+    #     'DVx': 7e7,
+    #     'DVy': 7e7,
+    #     'DVz': 7e7,
+    #     'omegaX': 0,
+    #     'omegaY': 0,
+    #     'omegaZ': 0
+    # }
+    # #Input Priors here
+    # custom_priors = {
+    #     'X0': (-15000,15000),
+    #     'Y0': (-15000, 15000),
+    #     'depth': (100, 35000),
+    #     'DVx': (1e2, 1e9),
+    #     'DVy': (1e2, 1e9),
+    #     'DVz': (-1e9, 1e9),
+    #     'omegaX': (-45, 45),
+    #     'omegaY': (-45, 45),
+    #     'omegaZ': (-45, 45)
+    # }
+    # # Intial Learning Rates Here
+    # custom_learning_rates = {
+    #     'X0': 100,
+    #     'Y0': 100,
+    #     'depth': 100,
+    #     'DVx': 1e4,
+    #     'DVy': 1e4,
+    #     'DVz': 1e4,
+    #     'omegaX': 1,
+    #     'omegaY': 1,
+    #     'omegaZ': 1
+    # }
+    # # Max Step Sizes Here
+    # max_step_sizes = {
+    #         'X0': 100000.0,
+    #         'Y0': 100000.0,
+    #         'depth': 10000.0,
+    #         'DVx': 1e7,
+    #         'DVy': 1e7,
+    #         'DVz': 1e7,
+    #         'omegaX': 20,
+    #         'omegaY': 20,
+    #         'omegaZ': 20
+    #     }
+    
     ###################################################################
 
-    # Extract data from the loaded object
-    data_dict = data.item()
-    print(data_dict.keys())
-    u_los_obs = np.array(data_dict['Phase']).flatten()
+    # ##### Values to Edit for Okada ######
 
-    Lon = np.array(data_dict['Lon']).flatten()
-    Lat = np.array(data_dict['Lat']).flatten()
+    # custom_initial = {
+    #     'X0': 0,
+    #     'Y0': 0,
+    #     'depth': 5000,
+    #     'length': 10000,
+    #     'width': 8000,
+    #     'strike': 0,
+    #     'dip': 30,
+    #     'rake': 90,
+    #     'slip': 1.0,
+    #     'opening': 0.0
+    # }
+    # #Input Priors here
+    # custom_priors = {
+    #     'X0': (-15000,15000),
+    #     'Y0': (-15000, 15000),
+    #     'depth': (100, 35000),
+    #     'length': (1000, 50000),
+    #     'width': (1000, 30000),
+    #     'strike': (0, 360),
+    #     'dip': (0, 90),
+    #     'rake': (-180, 180),
+    #     'slip': (-10.0, 10.0),
+    #     'opening': (0,0)
+    # }
+    # # Intial Learning Rates Here
+    # custom_learning_rates = {
+    #     'X0': 100,
+    #     'Y0': 100,
+    #     'depth': 100,
+    #     'length': 100,
+    #     'width': 100,
+    #     'strike': 1,
+    #     'dip': 1,
+    #     'rake': 1,
+    #     'slip': 0.1,
+    #     'opening': 0.0
+    # }
+    # # Max Step Sizes Here
+    # max_step_sizes = {
+    #         'X0': 100000.0,
+    #         'Y0': 100000.0,
+    #         'depth': 10000.0,
+    #         'length': 10000.0,
+    #         'width': 8000.0,
+    #         'strike': 20,
+    #         'dip': 20,
+    #         'rake': 20,
+    #         'slip': 2.0,
+    #         'opening': 0.0
+    #     }
+    ###################################################################
+
+
+
+
+
+       
+    # # Load data from .npy file
+    # data = np.load('benji_test.npy', allow_pickle=True)
+
+
+    # sill = 6.1951e-05
+    # range_param = 15737.072
+    # nugget = 3.311e-06
+    # referencePoint = [-67.83951712, -21.77505660]
+    # ###################################################################
+
+    # # Extract data from the loaded object
+    # data_dict = data.item()
+    # print(data_dict.keys())
+    # u_los_obs = np.array(data_dict['Phase']).flatten()
+
+    # Lon = np.array(data_dict['Lon']).flatten()
+    # Lat = np.array(data_dict['Lat']).flatten()
    
-    X_obs, Y_obs = convert_lat_long_2_xy(Lon, Lat, referencePoint[0], referencePoint[1])
-    print(f"Converted Lon/Lat to X/Y with reference point {referencePoint}")
-    print(f"X_obs range: {X_obs.min():.3f} to {X_obs.max():.3f}")
-    print(f"Y_obs range: {Y_obs.min():.3f} to {Y_obs.max():.3f}")
-    print(len(X_obs), len(Y_obs), len(u_los_obs))
-    incidence_angle = np.mean(np.array(data_dict['Inc']))
-    heading = np.mean(np.array(data_dict['Heading']))
+    # X_obs, Y_obs = convert_lat_long_2_xy(Lon, Lat, referencePoint[0], referencePoint[1])
+    # print(f"Converted Lon/Lat to X/Y with reference point {referencePoint}")
+    # print(f"X_obs range: {X_obs.min():.3f} to {X_obs.max():.3f}")
+    # print(f"Y_obs range: {Y_obs.min():.3f} to {Y_obs.max():.3f}")
+    # print(len(X_obs), len(Y_obs), len(u_los_obs))
+    # incidence_angle = np.mean(np.array(data_dict['Inc']))
+    # heading = np.mean(np.array(data_dict['Heading']))
 
-    print(f"Loaded data shapes:")
-    print(f"  u_los_obs: {u_los_obs.shape}")
-    print(f"  X_obs: {X_obs.shape}")
-    print(f"  Y_obs: {Y_obs.shape}")
-    print(f"  incidence_angle: {incidence_angle}")
-    print(f"  heading: {heading}")
+    # print(f"Loaded data shapes:")
+    # print(f"  u_los_obs: {u_los_obs.shape}")
+    # print(f"  X_obs: {X_obs.shape}")
+    # print(f"  Y_obs: {Y_obs.shape}")
+    # print(f"  incidence_angle: {incidence_angle}")
+    # print(f"  heading: {heading}")
   
 
-    # Run Bayesian inference with synthetic data and custom settings
-    samples, log_lik_trace, rms_evolution,pickle_filename = run_baysian_inference(
-        u_los_obs=u_los_obs, 
-        X_obs=X_obs, 
-        Y_obs=Y_obs, 
-        incidence_angle=incidence_angle, 
-        heading=heading,
-        n_iterations=int(1e5),
-        sill=sill,
-        nugget=nugget,
-        range_param=range_param,
-        initial_params=custom_initial,
-        priors=custom_priors,
-        proposal_std=custom_learning_rates,
-        max_step_sizes=max_step_sizes,
-        adaptive_interval=1000,
-        target_acceptance=0.23,
-        figure_folder="figure_test_realdata_1e6",
-        use_sa_init=True)
+    # # Run Bayesian inference with synthetic data and custom settings
+    # samples, log_lik_trace, rms_evolution,pickle_filename = run_baysian_inference(
+    #     u_los_obs=u_los_obs, 
+    #     X_obs=X_obs, 
+    #     Y_obs=Y_obs, 
+    #     incidence_angle=incidence_angle, 
+    #     heading=heading,
+    #     n_iterations=int(1e5),
+    #     sill=sill,
+    #     nugget=nugget,
+    #     range_param=range_param,
+    #     initial_params=custom_initial,
+    #     priors=custom_priors,
+    #     proposal_std=custom_learning_rates,
+    #     max_step_sizes=max_step_sizes,
+    #     adaptive_interval=1000,
+    #     target_acceptance=0.23,
+    #     figure_folder="figure_test_realdata_1e6",
+    #     use_sa_init=True,
+    #     model_type='pCDM'  # Change to 'pCDM' or 'okada' as needed
+    # )
     
   
-  #### Reload old inference state and regenerate plots example ####
-    # pickle_file = "./figure_test/bayesian_inference_state_n10000_accept0.23.pkl"
-    # regenerate_plots_from_state(pickle_file, new_figure_folder="regenerated_plots_test")
+#   #### Reload old inference state and regenerate plots example ####
+#     pickle_file = "./figure_test_realdata_1e6/bayesian_inference_state_n100000_accept0.23_okada.pkl"
+#     regenerate_plots_from_state(pickle_file, new_figure_folder="regenerated_plots_test")
