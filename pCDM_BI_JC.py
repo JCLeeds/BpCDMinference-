@@ -567,7 +567,7 @@ def bayesian_inference_pCDM_with_noise(u_los_obs, X_obs, Y_obs, incidence_angle,
         return (samples, log_likelihood_trace, residuals_evolution, 
                 proposal_std_evolution, acceptance_rate_evolution)
 
-def gen_synthetic_data(true_params, grid_size=100, noise_level=0.05, model_type='pcdm'):
+def gen_synthetic_data(true_params, grid_size=100, noise_level=0.5, model_type='pcdm'):
     """
     Generate synthetic data for testing various deformation models.
         
@@ -596,8 +596,8 @@ def gen_synthetic_data(true_params, grid_size=100, noise_level=0.05, model_type=
         Noise model parameters
     """
     # Create grid based on grid_size parameter
-    x_range = np.linspace(-10000, 10000, grid_size)
-    y_range = np.linspace(-10000, 10000, grid_size)
+    x_range = np.linspace(-50000, 50000, grid_size)
+    y_range = np.linspace(-50000, 50000, grid_size)
     X, Y = np.meshgrid(x_range, y_range)
     X_flat = X.flatten()
     Y_flat = Y.flatten()
